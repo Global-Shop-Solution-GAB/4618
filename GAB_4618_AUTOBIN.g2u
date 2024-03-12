@@ -1,0 +1,200 @@
+Program.Sub.Preflight.Start
+Variable.Global.sBin.Declare(String)
+Variable.Global.sPreBin.Declare(String)
+Variable.Global.sPart.Declare(String)
+Variable.Global.sLoc.Declare(String)
+Variable.Global.sGoodScan.Declare(String)
+Variable.Global.sBadScan.Declare(String)
+Variable.Global.sUpc.Declare(String)
+Variable.Global.sResult.Declare(String)
+
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'by Don Finch
+'6/16/17
+'for Circle Y Saddles
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+v.Local.sTransID.Declare(String)
+v.Local.sTransSeq.Declare(String)
+v.Local.sSql.Declare(String)
+v.Local.sRecord.Declare(String)
+v.Local.iArrayCount.Declare(long)
+v.Local.fLen.Declare(Float)
+
+v.Local.sTransID.Set(v.Passed.DATA-TRANSID)
+V.Local.sTransSeq.Set("0000")
+
+'Open connection
+f.ODBC.Connection!conx.OpenConnection(v.Ambient.PDSN,v.Ambient.PUser,v.Ambient.PPass)
+
+'build query
+f.Intrinsic.String.Build("select FIELD_1, FIELD_2, FIELD_3, FIELD_4, FIELD_5, FIELD_6, FIELD_7, FIELD_8, FIELD_9, FIELD_10, FIELD_11, FIELD_12 from v_wireless_line where trans_id ='{0}' and seq = '{1}'",v.Local.sTransID,v.Local.sTransSeq,v.Local.sSql)
+f.ODBC.Connection!conx.ExecuteAndReturn(v.Local.sSql,v.Local.sRecord)
+f.Intrinsic.String.Split(v.Local.sRecord,"*!*",v.Local.sRecord)
+v.Global.sBin.Set(v.Local.sRecord(0))
+
+'get the prefix portion of the BIN by subtracting off the last character that was passed in the string.
+f.Intrinsic.String.Len(v.Global.sBin,v.Local.fLen)
+f.Intrinsic.Math.Sub(v.Local.fLen,1,v.Local.fLen)
+f.Intrinsic.String.Left(v.Global.sBin,v.Local.fLen,v.Global.sPreBin)
+
+f.Intrinsic.Control.For(v.Local.iArrayCount,1,11,1)
+	f.Intrinsic.Control.If(v.Local.sRecord(v.Local.iArrayCount),>,"")
+		v.Global.sUpc.Set(v.Local.sRecord(v.Local.iArrayCount))
+	f.Intrinsic.Control.Else
+		f.Intrinsic.Control.Next(v.Local.iArrayCount)
+	f.Intrinsic.Control.EndIf
+	f.Intrinsic.Control.SelectCase(v.Local.iArrayCount)
+		f.Intrinsic.Control.Case(1)
+			f.Intrinsic.String.Concat(v.Global.sPreBin,"A",v.Global.sBin)
+		f.Intrinsic.Control.Case(2)
+			f.Intrinsic.String.Concat(v.Global.sPreBin,"B",v.Global.sBin)
+		f.Intrinsic.Control.Case(3)
+			f.Intrinsic.String.Concat(v.Global.sPreBin,"C",v.Global.sBin)
+		f.Intrinsic.Control.Case(4)
+			f.Intrinsic.String.Concat(v.Global.sPreBin,"D",v.Global.sBin)
+		f.Intrinsic.Control.Case(5)
+			f.Intrinsic.String.Concat(v.Global.sPreBin,"E",v.Global.sBin)
+		f.Intrinsic.Control.Case(6)
+			f.Intrinsic.String.Concat(v.Global.sPreBin,"F",v.Global.sBin)
+		f.Intrinsic.Control.Case(7)
+			f.Intrinsic.String.Concat(v.Global.sPreBin,"G",v.Global.sBin)
+		f.Intrinsic.Control.Case(8)
+			f.Intrinsic.String.Concat(v.Global.sPreBin,"H",v.Global.sBin)
+		f.Intrinsic.Control.Case(9)
+			f.Intrinsic.String.Concat(v.Global.sPreBin,"I",v.Global.sBin)
+		f.Intrinsic.Control.Case(10)
+			f.Intrinsic.String.Concat(v.Global.sPreBin,"J",v.Global.sBin)
+		f.Intrinsic.Control.Case(11)
+			f.Intrinsic.String.Concat(v.Global.sPreBin,"K",v.Global.sBin)
+	F.Intrinsic.Control.EndSelect
+
+'now that we have the BIN and the PART, let's start validating some stuff
+	f.Intrinsic.Control.CallSub(validate_bin)
+	
+'returning from the validation sequence of bin, part, and cross reference table
+	f.Intrinsic.Control.Next(v.Local.iArrayCount)
+
+'all scans have been validated, good and bad scan comments created, concat final feedback string
+f.Intrinsic.String.Concat(v.Global.sGoodScan,"<br></br>",v.Global.sBadScan,"<br>--------------</br>",v.Global.sResult)
+
+'post the feedback for the mobile transaction
+f.Global.Mobile.SetCustomResult(V.Caller.CompanyCode,V.Local.sTransID,V.Global.sResult)
+
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GAB_4618_AUTOBIN.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Main.End
+
+Program.Sub.validate_part.Start
+v.Local.sReturn.Declare(String)
+v.Local.sSql.Declare(String)
+v.Local.sComment.Declare(String)
+v.Local.iCount.Declare(Long)
+v.Local.sPartList.Declare(String)
+v.Local.sFontStart.Declare(String)
+v.Local.sFontStop.Declare(String)
+
+v.Local.sFontStart.Set("<font color='red'>")
+v.Local.sFontStop.Set("</font>")
+
+V.Local.sComment.Set("")
+V.Local.sReturn.Set("")
+
+'validate the UPC scanned and retrieve the part from the inventory_mstr
+f.Intrinsic.String.Build("select part from v_inventory_mst2 where text_info2 = '{0}' and location = ''",v.Global.sUpc,v.Local.sSql)
+f.ODBC.Connection!conx.ExecuteAndReturn(v.Local.sSql,v.Local.sReturn)
+'checking to see if the UPC was accidentally assigned to more than one part
+f.Intrinsic.String.Split(v.Local.sReturn,"#$#",v.Local.sReturn)
+f.Intrinsic.Control.If(v.Local.sReturn.UBound,>,0)
+	f.Intrinsic.String.Build("<br>{1}UPC {0} assigned to multiple parts{2}</br>",v.Global.sUpc,v.Local.sFontStart,v.Local.sFontStop,v.Local.sComment)
+	f.Intrinsic.Control.For(v.Local.iCount,0,v.Local.sReturn.UBound,1)
+		f.Intrinsic.String.Concat(v.Local.sPartList,v.Local.sReturn(v.Local.iCount),", ",v.Local.sPartList)
+	f.Intrinsic.Control.Next(v.Local.iCount)
+	f.Intrinsic.String.Concat(v.Local.sComment,"<br>",v.Local.sPartList,"</br>",v.Local.sComment)
+	f.Intrinsic.String.Concat(v.Global.sBadScan,v.Local.sComment,v.Global.sBadScan)
+	f.Intrinsic.Control.ExitSub
+f.Intrinsic.Control.EndIf
+
+'here we're checking to make sure we got a valid scan
+F.Intrinsic.Control.If(V.Local.sReturn,=,"")
+	f.Intrinsic.String.Build("<br>{1}UPC {0} not valid{2}</br>",v.Global.sUpc,v.Local.sFontStart,v.Local.sFontStop,v.Local.sComment)
+	f.Intrinsic.String.Concat(v.Global.sBadScan,v.Local.sComment,v.Global.sBadScan)
+	f.Intrinsic.Control.ExitSub
+f.Intrinsic.Control.EndIf
+
+v.Global.sPart.Set(v.Local.sReturn)
+F.Intrinsic.String.Trim(V.Global.sPart,V.Global.sPart)
+
+'update the bin on the inventory_mstr
+f.Intrinsic.String.Build("update inventory_mstr set bin = '{0}' where part = '{1}' and location = ''",v.Global.sBin,v.Global.sPart,v.Local.sSql)
+f.ODBC.Connection!conx.Execute(v.Local.sSql)
+f.Intrinsic.String.Build("<br> {0} set to {1}</br>",V.Global.sPart,V.Global.sBin,V.Local.sComment)
+F.Intrinsic.String.Concat(V.Global.sGoodScan,V.Local.sComment,V.Global.sGoodScan)
+
+'update the stock_bin in inventory mst3
+f.Intrinsic.String.Build("update inventory_mst3 set stock_bin = '{0}' where part = '{1}' and location = ''",v.Global.sBin,v.Global.sPart,v.Local.sSql)
+f.ODBC.Connection!conx.Execute(v.Local.sSql)
+
+f.Intrinsic.Control.ExitSub
+Program.Sub.validate_part.End
+
+Program.Sub.validate_bin.Start
+v.Local.sReturn.Declare(String)
+v.Local.sSql.Declare(String)
+v.Local.sComment.Declare(String)
+
+
+V.Local.sReturn.Set("")
+
+'validate the bin
+f.Intrinsic.String.Build("Select BIN from v_bin_master where BIN = '{0}'",v.Global.sBin,v.Local.sSql)
+f.ODBC.Connection!conx.ExecuteAndReturn(v.Local.sSql,v.Local.sReturn)
+f.Intrinsic.Control.If(v.Local.sReturn,=,"")
+	f.Intrinsic.String.Build("<br>BIN {0} not valid</br>",v.Global.sBin,v.Local.sComment)
+	f.Intrinsic.String.Concat(v.Global.sBadScan,v.Local.sComment,v.Global.sBadScan)
+	f.Intrinsic.Control.ExitSub
+f.Intrinsic.Control.EndIf
+
+'bin is good, validate the part
+f.Intrinsic.Control.CallSub(validate_part)
+
+f.Intrinsic.Control.ExitSub
+Program.Sub.validate_bin.End
+
+Program.Sub.validate_user_defined.Start
+v.Local.ssql.Declare(String)
+v.Local.sreturn.Declare(String)
+v.Local.sComment.Declare(String)
+
+V.Local.sreturn.Set("")
+V.Local.sComment.Set("")
+
+'check to see if the user_defined_part cross reference already exists for this part because we don't need to create it twice.
+f.Intrinsic.String.Build("select user_defined_part from v_inv_cross_ref where part = '{0}' and location = '' and customer = '' and vendor = ''",v.Global.sPart,v.Local.sSql)
+f.ODBC.Connection!conx.ExecuteAndReturn(v.Local.sSql,v.Local.sReturn)
+F.Intrinsic.String.Trim(V.Local.sReturn,V.Local.sReturn)
+f.Intrinsic.Control.If(v.Local.sReturn,=,"")
+	f.Intrinsic.String.Build("Update inv_cross_ref set user_defined_part = '{1}' where part = '{0}' and location = '' and customer = '' and vendor = ''",v.Global.sPart,v.Global.sUpc,v.Local.sSql)
+	f.ODBC.Connection!conx.Execute(V.Local.sSql)	
+f.Intrinsic.Control.EndIf
+
+f.Intrinsic.Control.ExitSub
+Program.Sub.validate_user_defined.End
+
+Program.Sub.Comments.Start
+${$0$}$GAB_4618_AUTOBIN$}$DFINCH$}$6/16/2017 11:07:36 AM$}$True
+${$3$}$0$}$$}$0$}$-1$}$$}$12:00:00 AM$}$Custom Mobile:  the user scans in a "prefix" bin.  Then scans in a series of part numbers.  Based on the Custom Mobile screen, the field that the part is scanned in to, the script assigns the remaining character to the BIN.  Example  13A25 is the prefix, if scanned in to the first part field on the form, the part is assigned to 13A25A.  If scanned in to the 4th field, the bin would be assigned as 13A25D.  This allows the user to assign default bins to multiple parts at one time (up to 11).
+Program.Sub.Comments.End
